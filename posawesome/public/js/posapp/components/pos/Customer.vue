@@ -48,6 +48,10 @@
               v-if="data.item.primary_address"
               v-html="`Primary Address: ${data.item.primary_address}`"
             ></v-list-item-subtitle>
+            <v-list-item-subtitle
+              v-if="data.item.custom_membership_type"
+              v-html="`<b>${data.item.custom_membership_type} - ${data.item.custom_membership}</b>`"
+            ></v-list-item-subtitle>
           </v-list-item-content>
         </template>
       </template>
@@ -117,6 +121,8 @@ export default {
       const textThree = item.email_id ? item.email_id.toLowerCase() : '';
       const textFour = item.mobile_no ? item.mobile_no.toLowerCase() : '';
       const textFifth = item.name.toLowerCase();
+      const textSixth = item.barcode ? item.barcode.toLowerCase(): '';
+      const textSeventh = item.custom_membership ? item.custom_membership.toLowerCase(): '';
       const searchText = queryText.toLowerCase();
 
       return (
@@ -124,7 +130,9 @@ export default {
         textTwo.indexOf(searchText) > -1 ||
         textThree.indexOf(searchText) > -1 ||
         textFour.indexOf(searchText) > -1 ||
-        textFifth.indexOf(searchText) > -1
+        textFifth.indexOf(searchText) > -1 ||
+        textSixth.indexOf(searchText) > -1 ||
+        textSeventh.indexOf(searchText) > -1
       );
     },
   },

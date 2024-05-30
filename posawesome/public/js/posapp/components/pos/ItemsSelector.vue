@@ -84,7 +84,7 @@
                   <v-card-text class="text--primary pa-1">
                     <div class="text-caption primary--text">
                       {{ currencySymbol(item.currency) || '' }}
-                      {{ formtCurrency(item.rate) || 0 }}
+                      {{ pos_profile.custom_show_duty_free_rate === 1 ? formtCurrency(item.duty_free_rate) || 0 : formtCurrency(item.rate) || 0 }}
                     </div>
                     <div class="text-caption golden--text">
                       {{ formtFloat(item.actual_qty) || 0 }}
@@ -110,7 +110,7 @@
                   <template v-slot:item.rate="{ item }">
                     <span class="primary--text"
                       >{{ currencySymbol(item.currency) }}
-                      {{ formtCurrency(item.rate) }}</span
+                      {{ pos_profile.custom_show_duty_free_rate === 1 ? formtCurrency(item.duty_free_rate) || 0 : formtCurrency(item.rate) || 0 }}</span
                     >
                   </template>
                   <template v-slot:item.actual_qty="{ item }">
@@ -336,6 +336,7 @@ export default {
         evntBus.$emit('add_item', item);
         this.qty = 1;
       }
+      evntBus.$emit('set_membership_benefits')
     },
     enter_event() {
       let match = false;

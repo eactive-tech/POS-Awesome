@@ -18,6 +18,24 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <v-dialog v-model="show_membership_dialog" max-width="330">
+      <v-card>
+        <v-card-title class="text-h5">
+          <span class="headline primary--text">{{
+            __("Membership ?")
+          }}</span>
+        </v-card-title>
+        <v-card-text>
+          Membersip Quota Exceeds !
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn color="warning" @click="show_membership_dialog = false">
+            {{ __("Close") }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
     <v-card
       style="max-height: 70vh; height: 70vh"
       class="cards my-0 py-0 mt-3 grey lighten-5"
@@ -49,6 +67,22 @@
             v-model="invoiceType"
             :disabled="invoiceType == 'Return'"
           ></v-select>
+        </v-col>
+      </v-row>
+      <v-row>
+        <v-col v-if="customer && membership.membership_type" cols="12">
+          <v-card>
+            <v-card-text>
+              <v-row>
+                <v-col class="bg-white">Type: {{ membership.membership_type }} ({{ membership.quota_type }})</v-col>
+                <v-col class="bg-white">Quota: {{ membership.quota_alloted_base }}</v-col>
+                <v-col class="bg-white">Balance: {{ membership_balance }}</v-col>
+                <v-col class="bg-white">Ignore Rule</v-col>
+                <v-col cols="1" class="bg-white"><v-checkbox dense v-model="ignore_membership_rule" @change="set_membership_benefits()"></v-checkbox></v-col>
+              </v-row>
+
+            </v-card-text>
+          </v-card>
         </v-col>
       </v-row>
 
@@ -153,7 +187,9 @@
         </v-col>
       </v-row>
 
-      <div class="my-0 py-0 overflow-y-auto" style="max-height: 60vh">
+      <div class="my-0 py-0 overflow-y-auto" 
+        :style="[customer && membership.membership_type ? {'max-height': '50vh'} : {'max-height': '60vh'}]"
+        style="max-height: 60vh">
         <template @mouseover="style = 'cursor: pointer'">
           <v-data-table
             :headers="items_headers"
@@ -867,6 +903,11 @@ export default {
         { text: __("Amount"), value: "amount", align: "center" },
         { text: __("is Offer"), value: "posa_is_offer", align: "center" },
       ],
+      membership: {},
+      membership_balance: 0,
+      membership_id: "",
+      ignore_membership_rule: false,
+      show_membership_dialog: false
     };
   },
 
@@ -923,6 +964,7 @@ export default {
       if (idx >= 0) {
         this.expanded.splice(idx, 1);
       }
+      this.set_membership_benefits();
     },
 
     add_one(item) {
@@ -932,6 +974,7 @@ export default {
       }
       this.calc_stock_qty(item, item.qty);
       this.$forceUpdate();
+      this.set_membership_benefits();
     },
     subtract_one(item) {
       item.qty--;
@@ -940,9 +983,17 @@ export default {
       }
       this.calc_stock_qty(item, item.qty);
       this.$forceUpdate();
+      this.set_membership_benefits();
     },
 
     add_item(item) {
+      this.set_membership_benefits();
+      if (this.membership.membership_type) {
+          if (this.membership_balance < 0) {
+            this.show_membership_dialog =true
+            return
+          }
+      }
       if (!item.uom) {
         item.uom = item.stock_uom;
       }
@@ -1274,8 +1325,22 @@ export default {
       if (!this.validate()) {
         return;
       }
+
+      if (this.membership.membership_type) {
+        if (this.membership_balance < 0) {
+          this.show_membership_dialog = true
+          return;
+        }
+
+      }
+
+
       evntBus.$emit("show_payment", "true");
       const invoice_doc = this.proces_invoice();
+      if (this.membership.membership_type && this.ignore_membership_rule == false) {
+        invoice_doc["custom_quota_balance"] = this.membership_balance;
+        invoice_doc["custom_membership_id"] = this.membership_id;
+      }
       evntBus.$emit("send_invoice_doc_payment", invoice_doc);
     },
 
@@ -1573,6 +1638,8 @@ export default {
             (item.has_serial_no = data.has_serial_no),
               (item.has_batch_no = data.has_batch_no),
               vm.calc_item_price(item);
+            vm.set_membership_benefits();
+
           }
         },
       });
@@ -2632,6 +2699,53 @@ export default {
         this.delivery_charges_rate = 0;
       }
     },
+
+    get_membership_info(customer) {
+      const vm = this;
+      if (customer) {
+        frappe.call({
+          method:
+            "posawesome.posawesome.api.posapp.get_membership_info",
+          args: {
+            customer: this.customer,
+          },
+          async: true,
+          callback: function (r) {
+            // console.log(r)
+            if (r.message) {
+              vm.membership = r.message;
+              vm.membership_balance = r.message.quota_balance
+              vm.membership_id = r.message.name
+
+            }
+          },
+        })
+      }
+
+    },
+
+    set_membership_benefits() {
+      if (this.membership.membership_type) {
+        if (this.ignore_membership_rule == false) {
+          this.membership_balance = this.membership.quota_balance;
+          this.items.forEach(item => {
+            this.membership_balance = this.membership_balance - (item.duty_free_rate * item.qty);
+            if (this.membership_balance >= 0) {
+              item.rate = item.duty_free_rate;
+            } else {
+              this.show_membership_dialog = true;
+              return false
+            }
+          })
+        } else {
+          this.membership_balance = this.membership.quota_balance;
+          this.items.forEach(item => {
+            // console.log(item)
+               item.rate = item.price_list_rate;
+          })
+        }
+      }
+    }
   },
 
   mounted() {
@@ -2650,6 +2764,7 @@ export default {
     });
     evntBus.$on("add_item", (item) => {
       this.add_item(item);
+      this.set_membership_benefits();
     });
     evntBus.$on("update_customer", (customer) => {
       this.customer = customer;
@@ -2664,6 +2779,7 @@ export default {
     evntBus.$on("load_invoice", (data) => {
       this.new_invoice(data);
       evntBus.$emit("set_pos_coupons", data.posa_coupons);
+      this.set_membership_benefits();
     });
     evntBus.$on("set_offers", (data) => {
       this.posOffers = data;
@@ -2691,6 +2807,10 @@ export default {
     evntBus.$on("set_new_line", (data) => {
       this.new_line = data;
     });
+
+    evntBus.$on('set_membership_benefits', () => {
+      this.set_membership_benefits();
+    })
   },
   beforeDestroy() {
     evntBus.$off("register_pos_profile");
@@ -2721,6 +2841,8 @@ export default {
       evntBus.$emit("set_customer", this.customer);
       this.fetch_customer_details();
       this.set_delivery_charges();
+      this.get_membership_info(this.customer);
+      this.set_membership_benefits();
     },
     customer_info() {
       evntBus.$emit("set_customer_info_to_edit", this.customer_info);

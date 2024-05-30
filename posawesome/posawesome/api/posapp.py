@@ -219,7 +219,7 @@ def get_items(pos_profile, price_list=None, item_group="", search_value=""):
             items = [d.item_code for d in items_data]
             item_prices_data = frappe.get_all(
                 "Item Price",
-                fields=["item_code", "price_list_rate", "currency", "uom"],
+                fields=["item_code", "price_list_rate", "currency", "uom", "custom_duty_free_rate"],
                 filters={
                     "price_list": price_list,
                     "item_code": ["in", items],
@@ -311,6 +311,7 @@ def get_items(pos_profile, price_list=None, item_group="", search_value=""):
                     row.update(
                         {
                             "rate": item_price.get("price_list_rate") or 0,
+                            "duty_free_rate": item_price.get("custom_duty_free_rate") or 0,
                             "currency": item_price.get("currency")
                             or pos_profile.get("currency"),
                             "item_barcode": item_barcode or [],
@@ -419,7 +420,8 @@ def get_customer_names(pos_profile):
         condition += get_customer_group_condition(pos_profile)
         customers = frappe.db.sql(
             """
-            SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address
+            SELECT name, mobile_no, email_id, tax_id, customer_name, primary_address, custom_membership, custom_membership_type,
+            (SELECT barcode from tabMembership where name = custom_membership) barcode
             FROM `tabCustomer`
             WHERE {0}
             ORDER by name
@@ -1745,3 +1747,14 @@ def get_seearch_items_conditions(item_code, serial_no, batch_no, barcode):
     return """ and (name like {item_code} or item_name like {item_code})""".format(
         item_code=frappe.db.escape("%" + item_code + "%")
     )
+
+@frappe.whitelist()
+def get_membership_info(customer):
+    membership_id = frappe.db.get_value("Customer", customer, "custom_membership")
+    if membership_id:
+        try:
+            return frappe.get_doc("Membership", membership_id)
+        except Exception as e:
+            return e
+    else:
+        return "Membership Not Found"
